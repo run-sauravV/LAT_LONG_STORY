@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "")
 EE_PROJECT_ID = os.getenv("EE_PROJECT_ID", "")
+EE_SERVICE_KEY_JSON = os.getenv("EE_SERVICE_KEY_JSON", "")
 OPENTOPO_API_KEY = os.getenv("OPENTOPO_API_KEY", "")
 
 WATER_MODEL_PATH = os.getenv(
@@ -32,6 +33,33 @@ VEGETATION_MODEL_PATH = os.getenv(
 
 UPLOADS = {}
 RESULTS = {}
+
+_EE_READY = None
+
+def _ee_init():
+    """Initialize Earth Engine once: service-account key (servers) or user creds (laptop)."""
+    global _EE_READY
+    if _EE_READY is not None:
+        return _EE_READY
+    try:
+        import ee
+        if EE_SERVICE_KEY_JSON:
+            import json
+            from google.oauth2 import service_account
+            info = json.loads(EE_SERVICE_KEY_JSON)
+            creds = service_account.Credentials.from_service_account_info(
+                info, scopes=["https://www.googleapis.com/auth/earthengine"]
+            )
+            ee.Initialize(credentials=creds, project=EE_PROJECT_ID or info.get("project_id"))
+            logger.info("Earth Engine: service-account auth OK")
+        else:
+            ee.Initialize(project=EE_PROJECT_ID)
+            logger.info("Earth Engine: default auth OK")
+        _EE_READY = True
+    except Exception as e:
+        logger.warning(f"Earth Engine init failed: {e}")
+        _EE_READY = False
+    return _EE_READY
 
 class ExifData(BaseModel):
     latitude: float = Field(..., ge=-90, le=90)
@@ -99,7 +127,8 @@ def get_dem_from_earth_engine(lat: float, lon: float) -> Dict[str, Any]:
         import math
         import numpy as np
 
-        ee.Initialize(project=EE_PROJECT_ID)
+        if not _ee_init():
+            raise RuntimeError("Earth Engine unavailable")
 
         point = ee.Geometry.Point([lon, lat])
         region = point.buffer(5000).bounds()
@@ -306,7 +335,8 @@ def get_satellite_ndvi(lat: float, lon: float) -> Dict[str, Any]:
         import base64
         from PIL import Image as PILImage
 
-        ee.Initialize(project=EE_PROJECT_ID)
+        if not _ee_init():
+            raise RuntimeError("Earth Engine unavailable")
 
         point = ee.Geometry.Point([lon, lat])
         bbox = point.buffer(2000).bounds()

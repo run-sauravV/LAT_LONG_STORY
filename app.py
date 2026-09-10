@@ -1,5 +1,7 @@
 import os
+import gc
 import logging
+import threading
 from datetime import datetime
 from typing import Optional, Dict, Any
 import uuid
@@ -33,6 +35,30 @@ VEGETATION_MODEL_PATH = os.getenv(
 
 UPLOADS = {}
 RESULTS = {}
+
+# Single shared YOLO instance: constructing it per request spikes RAM
+# (torch + weights reloaded every upload) and OOMs small hosts.
+_WATER_MODEL = None
+_WATER_CLASS_IDS = None
+_WATER_MODEL_ERROR = None
+_WATER_LOCK = threading.Lock()
+
+def _get_water_model():
+    """Load water model once; return (model, water_class_ids) or (None, reason)."""
+    global _WATER_MODEL, _WATER_CLASS_IDS, _WATER_MODEL_ERROR
+    with _WATER_LOCK:
+        if _WATER_MODEL is not None or _WATER_MODEL_ERROR is not None:
+            return _WATER_MODEL, _WATER_CLASS_IDS, _WATER_MODEL_ERROR
+        try:
+            from ultralytics import YOLO
+            _WATER_MODEL = YOLO(WATER_MODEL_PATH)
+            names = _WATER_MODEL.names
+            _WATER_CLASS_IDS = {cid for cid, n in names.items() if "water" in n.lower()}
+            logger.info(f"Water model loaded: {WATER_MODEL_PATH} classes={list(names.values())}")
+        except Exception as e:
+            _WATER_MODEL_ERROR = str(e)
+            logger.warning(f"Water model load failed: {e}")
+        return _WATER_MODEL, _WATER_CLASS_IDS, _WATER_MODEL_ERROR
 
 _EE_READY = None
 
@@ -523,54 +549,59 @@ def segment_photo(photo_bytes: bytes, exif: dict) -> Dict[str, Any]:
         # --- Water detection model (separate file, expects a 'water' class) ---
         if os.path.exists(WATER_MODEL_PATH):
             try:
-                from ultralytics import YOLO
                 import cv2
 
-                model = YOLO(WATER_MODEL_PATH)
-                class_names = model.names  # {0: 'water', ...} for a properly trained model
-                water_class_ids = {
-                    cid for cid, name in class_names.items()
-                    if "water" in name.lower()
-                }
-
-                if not water_class_ids:
-                    # Model has no water class at all (e.g. generic COCO weights) —
-                    # say so plainly instead of silently mislabeling other objects as water
-                    msg = (
-                        f"Model at {os.path.basename(WATER_MODEL_PATH)} has no 'water' class "
-                        f"(classes: {list(class_names.values())[:6]}...). Not a water-detection model — "
-                        f"skipping water body detection rather than reporting false positives."
-                    )
+                model, water_class_ids, load_error = _get_water_model()
+                if model is None:
+                    msg = f"Water model unavailable: {load_error or 'unknown load error'}"
                     status_parts.append(msg)
                     logger.warning(msg)
                 else:
-                    img_bgr = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-                    results = model.predict(
-                        source=img_bgr, conf=0.30, imgsz=512, device="cpu", verbose=False
-                    )
-                    result = results[0]
+                    class_names = model.names  # {0: 'water', ...} for a properly trained model
 
-                    if result.masks is not None and result.boxes is not None:
-                        masks = result.masks.data.cpu().numpy()
-                        boxes = result.boxes
-                        class_ids = boxes.cls.cpu().numpy().astype(int)
+                    if not water_class_ids:
+                        # Model has no water class at all (e.g. generic COCO weights) —
+                        # say so plainly instead of silently mislabeling other objects as water
+                        msg = (
+                            f"Model at {os.path.basename(WATER_MODEL_PATH)} has no 'water' class "
+                            f"(classes: {list(class_names.values())[:6]}...). Not a water-detection model — "
+                            f"skipping water body detection rather than reporting false positives."
+                        )
+                        status_parts.append(msg)
+                        logger.warning(msg)
+                    else:
+                        img_bgr = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+                        # imgsz 416 (not 512): halves peak RAM on small hosts,
+                        # negligible accuracy loss for water blobs.
+                        results = model.predict(
+                            source=img_bgr, conf=0.30, imgsz=416, device="cpu", verbose=False
+                        )
+                        result = results[0]
 
-                        for i, mask in enumerate(masks):
-                            if class_ids[i] not in water_class_ids:
-                                continue  # skip anything that isn't actually water
-                            mask_resized = cv2.resize(mask, (width, height), interpolation=cv2.INTER_NEAREST)
-                            area_pixels = int((mask_resized > 0.5).sum())
-                            area_sqm = round(area_pixels * 0.09, 1)
-                            confidence = float(boxes.conf[i])
-                            water_bodies.append({
-                                "confidence": round(confidence, 2),
-                                "area_sqm": area_sqm,
-                                "area_pixels": area_pixels
-                            })
+                        if result.masks is not None and result.boxes is not None:
+                            masks = result.masks.data.cpu().numpy()
+                            boxes = result.boxes
+                            class_ids = boxes.cls.cpu().numpy().astype(int)
 
-                    msg = f"Water-trained model: {len(water_bodies)} water body(ies) found."
-                    status_parts.append(msg)
-                    logger.info(msg)
+                            for i, mask in enumerate(masks):
+                                if class_ids[i] not in water_class_ids:
+                                    continue  # skip anything that isn't actually water
+                                mask_resized = cv2.resize(mask, (width, height), interpolation=cv2.INTER_NEAREST)
+                                area_pixels = int((mask_resized > 0.5).sum())
+                                area_sqm = round(area_pixels * 0.09, 1)
+                                confidence = float(boxes.conf[i])
+                                water_bodies.append({
+                                    "confidence": round(confidence, 2),
+                                    "area_sqm": area_sqm,
+                                    "area_pixels": area_pixels
+                                })
+
+                            del masks, boxes
+                            gc.collect()
+
+                        msg = f"Water-trained model: {len(water_bodies)} water body(ies) found."
+                        status_parts.append(msg)
+                        logger.info(msg)
 
             except Exception as e:
                 msg = f"Water model inference failed: {e}"

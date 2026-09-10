@@ -1,6 +1,7 @@
 # Backend (app.py)
 fastapi
 uvicorn
+python-multipart
 piexif
 python-dotenv
 requests

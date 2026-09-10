@@ -17,8 +17,6 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-SENTINEL_HUB_CLIENT_ID = os.getenv("SENTINEL_HUB_CLIENT_ID", "")
-SENTINEL_HUB_CLIENT_SECRET = os.getenv("SENTINEL_HUB_CLIENT_SECRET", "")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "")
 EE_PROJECT_ID = os.getenv("EE_PROJECT_ID", "")
 OPENTOPO_API_KEY = os.getenv("OPENTOPO_API_KEY", "")

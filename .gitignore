@@ -14,6 +14,10 @@ label_check/
 debug5/
 *.tif
 *.zip
+# GCP service-account keys must NEVER be committed
+sih-project-*.json
+ee-service-key.json
+*-key.json
 frontend/node_modules/
 frontend/.next/
 frontend/out/

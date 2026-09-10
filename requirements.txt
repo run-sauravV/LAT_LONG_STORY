@@ -1,0 +1,18 @@
+# Backend (app.py)
+fastapi
+uvicorn
+piexif
+python-dotenv
+requests
+pydantic
+earthengine-api
+Pillow
+numpy
+ultralytics
+opencv-python-headless
+
+# GIS engine (gis_engine/)
+geopandas
+shapely
+pysheds
+rasterio

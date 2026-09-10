@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+runs/
+data/
+*.cache
+soil_data/
+dataset/
+soil_yolo/
+soil_yolo_det/
+label_check/
+debug5/
+*.tif
+*.zip
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+# Trained weights are large; track only the deployed one via `git add -f`
+*.pt

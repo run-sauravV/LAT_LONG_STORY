@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Field Console — Watershed Survey</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root{
+    --paper:#EFEAE0;
+    --panel:#F7F4EC;
+    --panel-deep:#FFFFFFcc;
+    --ink:#202A22;
+    --ink-soft:#5B6459;
+    --line:#C7BFA8;
+    --water:#2F5D66;
+    --water-soft:#DCE7E6;
+    --clay:#A85632;
+    --clay-soft:#F0DCCE;
+    --moss:#55703E;
+    --moss-soft:#E1E8D6;
+    --amber:#B9862F;
+    --amber-soft:#F3E6CE;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    background:linear-gradient(160deg, #C9D8C2 0%, #EFEAE0 45%);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:13.5px;
+    line-height:1.5;
+    min-height:100vh;
+  }
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
+
+  .shell{
+    max-width:1600px;
+    margin:0 auto;
+    padding:20px;
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+    min-height:100vh;
+  }
+
+  .topbar{
+    background:var(--panel-deep);
+    backdrop-filter:blur(6px);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:14px 22px;
+    display:flex;
+    align-items:center;
+    gap:20px;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    white-space:nowrap;
+  }
+  .brand .mark{
+    width:34px; height:34px;
+    border-radius:9px;
+    background:var(--moss-soft);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Fraunces', serif;
+    color:var(--moss);
+    font-size:17px;
+  }
+  .brand h1{
+    font-family:'Fraunces', serif;
+    font-size:16.5px;
+    font-weight:600;
+    margin:0;
+  }
+  .brand p{ margin:0; font-size:11px; color:var(--ink-soft); }
+
+  .topsearch{
+    flex:1;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:8px 16px;
+    color:var(--ink-soft);
+  }
+  .topsearch input{
+    border:none; outline:none; background:transparent;
+    font-family:'IBM Plex Sans', sans-serif; font-size:13px; color:var(--ink);
+    width:100%;
+  }
+
+  .topmeta{
+    display:flex; align-items:center; gap:16px; white-space:nowrap;
+  }
+  .status-dot{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:12px; color:var(--ink-soft);
+  }
+  .status-dot .dot{ width:7px; height:7px; border-radius:50%; background:var(--moss); }
+  .status-dot.offline .dot{ background:var(--clay); }
+  .avatar{
+    width:32px; height:32px; border-radius:50%;
+    background:var(--water); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:12.5px; font-weight:600;
+  }
+
+  .main{
+    display:grid;
+    grid-template-columns: 68px 320px 1fr 360px;
+    gap:16px;
+    flex:1;
+    min-height:0;
+  }
+  @media (max-width: 1300px){
+    .main{ grid-template-columns: 60px 280px 1fr; }
+    .detailcol{ display:none; }
+  }
+  @media (max-width: 900px){
+    .main{ grid-template-columns: 1fr; }
+    .navcol, .listcol, .mapcol{ min-height:auto; }
+  }
+
+  .card{
+    background:var(--panel-deep);
+    backdrop-filter:blur(6px);
+    border:1px solid var(--line);
+    border-radius:16px;
+  }
+
+  .navcol{
+    padding:14px 8px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:8px;
+  }
+  .navitem{
+    width:44px; height:44px;
+    border-radius:11px;
+    display:flex; align-items:center; justify-content:center;
+    color:var(--ink-soft);
+    cursor:pointer;
+    font-size:17px;
+  }
+  .navitem:hover{ background:var(--panel); }
+  .navitem.active{ background:var(--moss); color:#fff; }
+
+  .listcol{
+    display:flex;
+    flex-direction:column;
+    padding:18px;
+    min-height:0;
+  }
+  .listcol h2{
+    font-family:'Fraunces', serif;
+    font-size:16px;
+    margin:0 0 12px 0;
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+  }
+  .listcol h2 span{ font-size:12px; color:var(--ink-soft); font-family:'IBM Plex Mono', monospace; }
+
+  .filtertabs{
+    display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;
+  }
+  .filtertab{
+    font-size:11px;
+    padding:5px 11px;
+    border-radius:20px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    cursor:pointer;
+    color:var(--ink-soft);
+  }
+  .filtertab.active{
+    background:var(--moss);
+    color:#fff;
+    border-color:var(--moss);
+  }
+
+  .surveylist{
+    flex:1;
+    overflow-y:auto;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    margin:0 -6px;
+    padding:0 6px;
+  }
+  .empty-hint{
+    padding:16px; border:1px dashed var(--line); border-radius:10px;
+    color:var(--ink-soft); font-size:12px; text-align:center;
+  }
+  .surveyitem{
+    padding:11px 12px;
+    border-radius:10px;
+    cursor:pointer;
+    border:1px solid transparent;
+  }
+  .surveyitem:hover{ background:var(--panel); }
+  .surveyitem.active{
+    background:var(--moss-soft);
+    border-color:var(--moss);
+  }
+  .surveyitem .row1{
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:3px;
+  }
+  .surveyitem .name{ font-size:12.5px; font-weight:600; }
+  .surveyitem .coords{
+    font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--ink-soft);
+  }
+
+  .pill{
+    font-size:10px; padding:2px 8px; border-radius:20px; white-space:nowrap; font-weight:500;
+  }
+  .pill.complete{ background:var(--moss-soft); color:var(--moss); }
+  .pill.processing{ background:var(--water-soft); color:var(--water); }
+  .pill.failed{ background:var(--clay-soft); color:var(--clay); }
+
+  .uploadbtn{
+    margin-top:12px;
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    padding:11px;
+    border-radius:10px;
+    background:var(--moss);
+    color:#fff;
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+    border:none;
+  }
+  .uploadbtn:hover{ opacity:0.92; }
+  #fileInput{ display:none; }
+
+  .mapcol{
+    position:relative;
+    overflow:hidden;
+    min-height:400px;
+  }
+  #map{
+    position:absolute; inset:0;
+    border-radius:16px;
+  }
+  .maplayers{
+    position:absolute; top:14px; left:14px; z-index:500;
+    display:flex; background:var(--panel-deep); backdrop-filter:blur(6px);
+    border:1px solid var(--line); border-radius:20px; padding:3px; gap:2px;
+  }
+  .maplayer-btn{
+    font-size:11.5px; padding:6px 13px; border-radius:16px; cursor:pointer;
+    color:var(--ink-soft); font-weight:500;
+  }
+  .maplayer-btn.active{ background:var(--moss); color:#fff; }
+
+  .maplegend{
+    position:absolute; bottom:14px; left:14px; z-index:500;
+    background:var(--panel-deep); backdrop-filter:blur(6px);
+    border:1px solid var(--line); border-radius:12px; padding:12px 14px;
+    font-size:11px; color:var(--ink-soft); min-width:170px;
+  }
+  .maplegend .row{ display:flex; align-items:center; gap:7px; margin:5px 0; }
+  .maplegend .swatch{ width:10px; height:10px; border-radius:3px; flex-shrink:0; }
+  .maplegend .gradientbar{
+    height:8px; border-radius:4px; margin:6px 0 2px 0;
+    background:linear-gradient(90deg, #0000FF, #00FFFF, #00FF00, #FFFF00, #FF0000);
+  }
+  .maplegend .gradlabels{ display:flex; justify-content:space-between; font-size:9.5px; }
+
+  .mapempty{
+    position:absolute; inset:0; z-index:400;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--panel);
+    color:var(--ink-soft); font-size:13px; text-align:center; padding:30px;
+  }
+
+  .detailcol{
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    overflow-y:auto;
+    padding-right:2px;
+  }
+  .detail-empty{
+    padding:40px 20px;
+    color:var(--ink-soft);
+    font-size:12.5px;
+    text-align:center;
+  }
+  .detail-empty .mark{
+    font-family:'Fraunces', serif; font-size:14px; color:var(--ink); display:block; margin-bottom:6px;
+  }
+  .dcard{ padding:16px; }
+  .dcard-head{
+    display:flex; justify-content:space-between; align-items:flex-start; gap:10px;
+  }
+  .dcard-head h3{
+    font-family:'Fraunces', serif; font-size:15px; margin:0 0 4px 0;
+  }
+  .dcard-head .loc{
+    font-size:11px; color:var(--ink-soft); display:flex; align-items:center; gap:5px;
+  }
+  .dcard-head .time{ font-size:10.5px; color:var(--ink-soft); margin-top:2px; }
+  .dcard p.desc{
+    font-size:12px; color:var(--ink-soft); margin:10px 0 0 0; line-height:1.55;
+  }
+
+  .metricgrid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+  }
+  .metric{
+    padding:12px;
+    border-radius:12px;
+  }
+  .metric .k{ font-size:10.5px; color:var(--ink-soft); display:block; margin-bottom:4px; }
+  .metric .v{ font-family:'IBM Plex Mono', monospace; font-size:15px; font-weight:600; }
+  .metric.tone-moss{ background:var(--moss-soft); }
+  .metric.tone-water{ background:var(--water-soft); }
+  .metric.tone-clay{ background:var(--clay-soft); }
+  .metric.tone-amber{ background:var(--amber-soft); }
+  .metric.tone-neutral{ background:var(--panel); border:1px solid var(--line); }
+
+  .tabs{ display:flex; gap:4px; margin-bottom:12px; }
+  .tab{
+    font-size:11.5px; padding:6px 12px; border-radius:8px; cursor:pointer;
+    color:var(--ink-soft); font-weight:500;
+  }
+  .tab.active{ background:var(--panel); color:var(--ink); }
+
+  .donutwrap{ display:flex; align-items:center; gap:14px; }
+  .donutwrap canvas{ max-width:100px; max-height:100px; }
+  .donutlegend{ flex:1; display:flex; flex-direction:column; gap:6px; }
+  .donutlegend .row{ display:flex; justify-content:space-between; align-items:center; font-size:11.5px; }
+  .donutlegend .dot{ width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; }
+
+  .chartwrap{ height:150px; margin-top:6px; }
+
+  .waterlist{ display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  .wateritem{
+    display:flex; justify-content:space-between; font-size:11.5px;
+    padding:8px 10px; background:var(--water-soft); border-radius:8px;
+  }
+
+  .processing-note{
+    display:flex; align-items:center; gap:8px; color:var(--water); font-size:12px; margin-bottom:4px;
+  }
+  .pdot{ width:6px; height:6px; border-radius:50%; background:var(--water); animation:pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{opacity:.3;} 50%{opacity:1;} }
+
+  .thumb{
+    width:100%; height:110px; border-radius:10px; object-fit:cover;
+    border:1px solid var(--line); margin-bottom:10px;
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <div class="topbar card">
+    <div class="brand">
+      <div class="mark">≈</div>
+      <div>
+        <h1>Field Console</h1>
+        <p>Watershed Survey</p>
+      </div>
+    </div>
+    <div class="topsearch">
+      <span>⌕</span>
+      <input id="searchInput" type="text" placeholder="Search by coordinates, filename..." />
+    </div>
+    <div class="topmeta">
+      <span class="status-dot" id="statusDot"><span class="dot"></span><span id="statusLabel">Checking…</span></span>
+      <span id="clock" style="font-size:12px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;"></span>
+      <div class="avatar">SV</div>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <div class="navcol card">
+      <div class="navitem active" title="Home">⌂</div>
+      <div class="navitem" title="Surveys">▤</div>
+      <div class="navitem" title="Map View">◈</div>
+      <div class="navitem" title="Settings">⚙</div>
+    </div>
+
+    <div class="listcol card">
+      <h2>Survey Points <span id="uploadCount">0</span></h2>
+      <div class="filtertabs">
+        <div class="filtertab active" data-filter="all">All</div>
+        <div class="filtertab" data-filter="complete">Completed</div>
+        <div class="filtertab" data-filter="processing">Processing</div>
+        <div class="filtertab" data-filter="failed">Failed</div>
+      </div>
+      <div class="surveylist" id="surveyList">
+        <div class="empty-hint">No surveys yet. Upload a geo-tagged photo to begin.</div>
+      </div>
+      <input type="file" id="fileInput" accept="image/jpeg,image/jpg" />
+      <button class="uploadbtn" id="uploadBtn">+ Add New Survey</button>
+    </div>
+
+    <div class="mapcol card">
+      <div id="map"></div>
+      <div class="maplayers">
+        <div class="maplayer-btn active" data-layer="satellite">Satellite</div>
+        <div class="maplayer-btn" data-layer="terrain">Terrain</div>
+        <div class="maplayer-btn" data-layer="hybrid">Hybrid</div>
+      </div>
+      <div class="maplegend" id="mapLegend" style="display:none;">
+        <div class="row"><span class="swatch" style="background:#2F5D6633;border:1.5px solid #2F5D66;"></span> Watershed boundary</div>
+        <div class="row"><span class="swatch" style="background:#A85632;border-radius:50%;"></span> Capture point</div>
+        <div id="elevLegendRow" style="display:none;">
+          <div style="margin-top:6px;font-size:10px;">Elevation</div>
+          <div class="gradientbar"></div>
+          <div class="gradlabels"><span>Low</span><span>High</span></div>
+        </div>
+      </div>
+      <div class="mapempty" id="mapEmpty">
+        <div><span style="font-family:'Fraunces',serif;font-size:14px;color:var(--ink);display:block;margin-bottom:6px;">No site selected</span>
+        Upload or select a survey point to view its map.</div>
+      </div>
+    </div>
+
+    <div class="detailcol">
+      <div class="card detail-empty" id="detailEmpty">
+        <span class="mark">Nothing selected</span>
+        Pick a survey from the list to see its full readout.
+      </div>
+      <div id="detailContent" style="display:none;"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  const API_BASE = 'http://localhost:8000';
+
+  const state = {
+    uploads: {},
+    order: [],
+    selected: null,
+    filter: 'all',
+    pollers: {},
+    map: null,
+    layers: {},
+    activeLayer: 'satellite',
+    boundaryLayer: null,
+    elevationLayer: null,
+    marker: null
+  };
+
+  const $ = s => document.querySelector(s);
+  const surveyList = $('#surveyList');
+  const uploadCount = $('#uploadCount');
+  const detailEmpty = $('#detailEmpty');
+  const detailContent = $('#detailContent');
+  const mapEmpty = $('#mapEmpty');
+  const mapLegend = $('#mapLegend');
+
+  function tickClock(){
+    const d = new Date();
+    $('#clock').textContent = d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + ', ' + d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+  }
+  tickClock();
+  setInterval(tickClock, 30000);
+
+  async function checkHealth(){
+    try{
+      const res = await fetch(API_BASE + '/health');
+      if(res.ok){
+        $('#statusDot').classList.remove('offline');
+        $('#statusLabel').textContent = 'Online';
+      } else throw new Error();
+    }catch(e){
+      $('#statusDot').classList.add('offline');
+      $('#statusLabel').textContent = 'Offline';
+    }
+  }
+  checkHealth();
+  setInterval(checkHealth, 15000);
+
+  function initMap(){
+    state.map = L.map('map', { zoomControl: true, attributionControl: false }).setView([20.5937, 78.9629], 5);
+
+    state.layers.satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
+    state.layers.terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, subdomains:'abc' });
+    state.layers.hybridBase = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
+    state.layers.hybridLabels = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains:'abcd' });
+
+    state.layers.satellite.addTo(state.map);
+  }
+  initMap();
+
+  document.querySelectorAll('.maplayer-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.maplayer-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      switchBaseLayer(btn.dataset.layer);
+    });
+  });
+
+  function switchBaseLayer(name){
+    Object.values(state.layers).forEach(l=>state.map.removeLayer(l));
+    if(name === 'satellite'){ state.layers.satellite.addTo(state.map); }
+    else if(name === 'terrain'){ state.layers.terrain.addTo(state.map); }
+    else if(name === 'hybrid'){ state.layers.hybridBase.addTo(state.map); state.layers.hybridLabels.addTo(state.map); }
+    state.activeLayer = name;
+    if(state.boundaryLayer) state.boundaryLayer.addTo(state.map);
+    if(state.elevationLayer) state.elevationLayer.addTo(state.map);
+    if(state.marker) state.marker.addTo(state.map);
+  }
+
+  function renderMapForUpload(u){
+    mapEmpty.style.display = 'none';
+    mapLegend.style.display = 'block';
+
+    if(state.boundaryLayer){ state.map.removeLayer(state.boundaryLayer); state.boundaryLayer = null; }
+    if(state.elevationLayer){ state.map.removeLayer(state.elevationLayer); state.elevationLayer = null; }
+    if(state.marker){ state.map.removeLayer(state.marker); state.marker = null; }
+
+    const exif = u.exif;
+    state.marker = L.circleMarker([exif.latitude, exif.longitude], {
+      radius:7, color:'#A85632', fillColor:'#A85632', fillOpacity:0.9, weight:2
+    }).addTo(state.map).bindPopup('Capture point');
+
+    let bounds = L.latLngBounds([[exif.latitude, exif.longitude]]);
+
+    if(u.result && u.result.gis_output){
+      const gis = u.result.gis_output;
+
+      if(gis.elevation_tile_url){
+        $('#elevLegendRow').style.display = 'block';
+        state.elevationLayer = L.tileLayer(gis.elevation_tile_url, { opacity: 0.55 }).addTo(state.map);
+      } else {
+        $('#elevLegendRow').style.display = 'none';
+      }
+
+      if(gis.catchment_boundary && gis.catchment_boundary.geometry){
+        state.boundaryLayer = L.geoJSON(gis.catchment_boundary, {
+          style: { color:'#2F5D66', weight:2, fillColor:'#2F5D66', fillOpacity:0.12 }
+        }).addTo(state.map);
+        bounds = state.boundaryLayer.getBounds();
+      }
+    }
+
+    state.map.fitBounds(bounds.pad(0.3), { maxZoom: 14 });
+  }
+
+  $('#uploadBtn').addEventListener('click', ()=> $('#fileInput').click());
+  $('#fileInput').addEventListener('change', e=>{
+    const f = e.target.files[0];
+    if(f) handleFile(f);
+  });
+
+  async function handleFile(file){
+    const tempId = 'pending-' + Date.now();
+    state.uploads[tempId] = { filename: file.name, status:'uploading' };
+    state.order.unshift(tempId);
+    renderList();
+
+    const form = new FormData();
+    form.append('photo', file);
+
+    try{
+      const res = await fetch(API_BASE + '/api/v1/upload', { method:'POST', body: form });
+      const body = await res.json();
+
+      delete state.uploads[tempId];
+      state.order = state.order.filter(id => id !== tempId);
+
+      if(!res.ok){
+        const failId = 'failed-' + Date.now();
+        state.uploads[failId] = { filename: file.name, status:'failed', error: body.detail || 'Upload rejected' };
+        state.order.unshift(failId);
+        renderList();
+        selectUpload(failId);
+        return;
+      }
+
+      const id = body.upload_id;
+      state.uploads[id] = { filename: file.name, exif: body.exif, status: 'processing' };
+      state.order.unshift(id);
+      renderList();
+      selectUpload(id);
+      pollResults(id);
+
+    }catch(err){
+      delete state.uploads[tempId];
+      state.order = state.order.filter(x => x !== tempId);
+      const failId = 'failed-' + Date.now();
+      state.uploads[failId] = { filename: file.name, status:'failed', error: 'Could not reach backend at ' + API_BASE };
+      state.order.unshift(failId);
+      renderList();
+      selectUpload(failId);
+    }
+  }
+
+  function pollResults(id){
+    if(state.pollers[id]) return;
+    state.pollers[id] = setInterval(async ()=>{
+      try{
+        const res = await fetch(API_BASE + '/api/v1/results/' + id);
+        const body = await res.json();
+        if(body.status === 'complete'){
+          state.uploads[id].status = 'complete';
+          state.uploads[id].result = body;
+          clearInterval(state.pollers[id]); delete state.pollers[id];
+          renderList();
+          if(state.selected === id){ renderDetail(id); renderMapForUpload(state.uploads[id]); }
+        } else if(body.status === 'failed'){
+          state.uploads[id].status = 'failed';
+          state.uploads[id].error = body.error;
+          clearInterval(state.pollers[id]); delete state.pollers[id];
+          renderList();
+          if(state.selected === id) renderDetail(id);
+        }
+      }catch(err){}
+    }, 2000);
+  }
+
+  function selectUpload(id){
+    state.selected = id;
+    renderList();
+    renderDetail(id);
+    const u = state.uploads[id];
+    if(u.exif) renderMapForUpload(u);
+  }
+
+  document.querySelectorAll('.filtertab').forEach(tab=>{
+    tab.addEventListener('click', ()=>{
+      document.querySelectorAll('.filtertab').forEach(t=>t.classList.remove('active'));
+      tab.classList.add('active');
+      state.filter = tab.dataset.filter;
+      renderList();
+    });
+  });
+
+  $('#searchInput').addEventListener('input', renderList);
+
+  function renderList(){
+    uploadCount.textContent = state.order.length;
+    const query = $('#searchInput').value.toLowerCase();
+
+    let visible = state.order.filter(id=>{
+      const u = state.uploads[id];
+      if(state.filter !== 'all' && u.status !== state.filter) return false;
+      if(query){
+        const hay = (u.filename||'') + ' ' + (u.exif ? u.exif.latitude+','+u.exif.longitude : '');
+        if(!hay.toLowerCase().includes(query)) return false;
+      }
+      return true;
+    });
+
+    if(visible.length === 0){
+      surveyList.innerHTML = '<div class="empty-hint">No surveys match. Upload a geo-tagged photo to begin.</div>';
+      return;
+    }
+
+    surveyList.innerHTML = '';
+    visible.forEach(id=>{
+      const u = state.uploads[id];
+      const div = document.createElement('div');
+      div.className = 'surveyitem' + (state.selected===id ? ' active' : '');
+      const coords = u.exif ? u.exif.latitude.toFixed(4)+', '+u.exif.longitude.toFixed(4) : '—';
+      const pillClass = u.status === 'complete' ? 'complete' : (u.status==='failed' ? 'failed' : 'processing');
+      const pillLabel = u.status === 'complete' ? 'Completed' : (u.status==='failed' ? 'Failed' : (u.status==='uploading' ? 'Uploading' : 'Processing'));
+      div.innerHTML = `
+        <div class="row1">
+          <span class="name">${u.filename}</span>
+          <span class="pill ${pillClass}">${pillLabel}</span>
+        </div>
+        <div class="coords">${coords}</div>
+      `;
+      div.addEventListener('click', ()=> selectUpload(id));
+      surveyList.appendChild(div);
+    });
+  }
+
+  let groundCoverChartInstance = null;
+  let reliefChartInstance = null;
+
+  function compassArrow(direction){
+    const map = { N:'↑', NE:'↗', E:'→', SE:'↘', S:'↓', SW:'↙', W:'←', NW:'↖' };
+    return map[direction] || '•';
+  }
+
+  function riskTone(cat){
+    if(cat === 'Severe' || cat === 'High') return 'tone-clay';
+    if(cat === 'Moderate') return 'tone-amber';
+    if(cat === 'Low') return 'tone-moss';
+    return 'tone-neutral';
+  }
+
+  function renderDetail(id){
+    const u = state.uploads[id];
+    detailEmpty.style.display = 'none';
+    detailContent.style.display = 'block';
+
+    if(u.status === 'failed'){
+      detailContent.innerHTML = `
+        <div class="card dcard">
+          <div class="dcard-head"><div><h3>${u.filename}</h3><div class="loc">Upload failed</div></div></div>
+          <p class="desc" style="color:var(--clay)">${u.error || 'Something went wrong.'}</p>
+        </div>`;
+      return;
+    }
+
+    const exif = u.exif;
+    const coordLine = exif ? `${exif.latitude.toFixed(6)}°, ${exif.longitude.toFixed(6)}°` : '—';
+
+    if(u.status === 'processing' || u.status === 'uploading'){
+      detailContent.innerHTML = `
+        <div class="card dcard">
+          <div class="dcard-head">
+            <div><h3>${u.filename}</h3><div class="loc">📍 ${coordLine}</div></div>
+            <span class="pill processing">Processing</span>
+          </div>
+          <div class="processing-note" style="margin-top:12px;"><span class="pdot"></span> analyzing terrain, vegetation and water features…</div>
+        </div>`;
+      return;
+    }
+
+    const r = u.result;
+    const cv = r.cv_output || {};
+    const gis = r.gis_output || {};
+    const weather = gis.weather || {};
+    const satellite = gis.satellite || {};
+
+    detailContent.innerHTML = `
+      <div class="card dcard">
+        <div class="dcard-head">
+          <div>
+            <h3>${u.filename}</h3>
+            <div class="loc">📍 ${coordLine}</div>
+            <div class="time">Processed in ${r.processing_time_seconds}s</div>
+          </div>
+          <span class="pill complete">Completed</span>
+        </div>
+        ${satellite.true_color_base64 ? `<img class="thumb" style="margin-top:12px;" src="data:image/png;base64,${satellite.true_color_base64}" alt="Satellite view"/>` : ''}
+        <p class="desc">Elevation ${gis.elevation_m ?? '—'} m · slope ${gis.dem_slope_deg ?? '—'}° · vegetation cover ${(cv.vegetation_density*100).toFixed(0)}%.</p>
+      </div>
+
+      <div class="card dcard">
+        <div class="tabs"><div class="tab active">Overview</div></div>
+        <div class="metricgrid">
+          <div class="metric tone-moss"><span class="k">▲ Elevation</span><span class="v">${gis.elevation_m ?? '—'} m</span></div>
+          <div class="metric tone-water"><span class="k">╱ Slope</span><span class="v">${gis.dem_slope_deg ?? '—'}°</span></div>
+          <div class="metric tone-neutral"><span class="k">${compassArrow(gis.flow_direction)} Flow direction</span><span class="v">${gis.flow_direction ?? '—'}</span></div>
+          <div class="metric ${riskTone(gis.erosion_risk_category)}"><span class="k">⚠ Erosion risk</span><span class="v">${gis.erosion_risk_category ?? '—'}</span></div>
+        </div>
+      </div>
+
+      <div class="card dcard">
+        <p style="font-family:'Fraunces',serif;font-size:13.5px;margin:0 0 10px 0;">Ground cover</p>
+        <div class="donutwrap">
+          <canvas id="groundCoverChart"></canvas>
+          <div class="donutlegend">
+            <div class="row"><span><span class="dot" style="background:#55703E;"></span>Vegetation</span><span>${(cv.vegetation_density*100).toFixed(0)}%</span></div>
+            <div class="row"><span><span class="dot" style="background:#C7BFA8;"></span>Other / bare</span><span>${(100-cv.vegetation_density*100).toFixed(0)}%</span></div>
+          </div>
+        </div>
+        <div class="waterlist">
+          ${ (cv.water_bodies||[]).length === 0
+              ? `<div class="wateritem"><span>Water bodies detected</span><span>0</span></div>`
+              : cv.water_bodies.map(w => `<div class="wateritem"><span>Water body (${(w.confidence*100).toFixed(0)}% conf.)</span><span>${w.area_sqm} m²</span></div>`).join('') }
+        </div>
+      </div>
+
+      <div class="card dcard">
+        <p style="font-family:'Fraunces',serif;font-size:13.5px;margin:0 0 10px 0;">Relief profile</p>
+        <div class="chartwrap"><canvas id="reliefChart"></canvas></div>
+        <p class="desc" style="margin-top:8px;">Catchment area (HydroBASINS): ${gis.catchment_area_sqkm ?? '—'} km² · relief ratio ${gis.relief_ratio ?? '—'}</p>
+      </div>
+
+      <div class="card dcard">
+        <p style="font-family:'Fraunces',serif;font-size:13.5px;margin:0 0 10px 0;">Weather &amp; satellite</p>
+        <div class="metricgrid">
+          <div class="metric tone-neutral"><span class="k">Temperature</span><span class="v">${weather.temperature_c ?? '—'}°C</span></div>
+          <div class="metric tone-neutral"><span class="k">Humidity</span><span class="v">${weather.humidity_percent ?? '—'}%</span></div>
+          <div class="metric tone-neutral"><span class="k">Rainfall (1h)</span><span class="v">${weather.rainfall_mm ?? '—'} mm</span></div>
+          <div class="metric tone-neutral"><span class="k">NDVI (mean)</span><span class="v">${satellite.ndvi_mean ?? '—'}</span></div>
+        </div>
+        <p class="desc">DEM source: ${gis.dem_source ?? '—'} · Satellite source: ${satellite.source ?? '—'}</p>
+      </div>
+    `;
+
+    if(groundCoverChartInstance) groundCoverChartInstance.destroy();
+    const gcCtx = document.getElementById('groundCoverChart');
+    if(gcCtx){
+      groundCoverChartInstance = new Chart(gcCtx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Vegetation', 'Other / bare'],
+          datasets: [{
+            data: [cv.vegetation_density*100, 100-cv.vegetation_density*100],
+            backgroundColor: ['#55703E', '#C7BFA8'],
+            borderWidth: 0
+          }]
+        },
+        options: { cutout:'68%', plugins:{legend:{display:false}} }
+      });
+    }
+
+    if(reliefChartInstance) reliefChartInstance.destroy();
+    const relCtx = document.getElementById('reliefChart');
+    if(relCtx){
+      const points = [];
+      const labels = [];
+      if(gis.outlet_elevation_m != null){ labels.push('Region min'); points.push(gis.outlet_elevation_m); }
+      if(gis.elevation_m != null){ labels.push('Capture point'); points.push(gis.elevation_m); }
+      if(gis.max_elevation_m != null){ labels.push('Region max'); points.push(gis.max_elevation_m); }
+
+      reliefChartInstance = new Chart(relCtx, {
+        type: 'line',
+        data: {
+          labels: labels.length ? labels : ['No data'],
+          datasets: [{
+            data: points.length ? points : [0],
+            borderColor: '#2F5D66',
+            backgroundColor: '#2F5D6622',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 4,
+            pointBackgroundColor: '#2F5D66'
+          }]
+        },
+        options: {
+          plugins:{legend:{display:false}},
+          scales:{ y:{ title:{display:true,text:'meters'} } }
+        }
+      });
+    }
+  }
+
+  async function loadExisting(){
+    try{
+      const res = await fetch(API_BASE + '/api/v1/uploads');
+      const body = await res.json();
+      (body.uploads || []).forEach(u=>{
+        state.uploads[u.id] = { filename: u.id.slice(0,8) + '.jpg', exif: u.exif, status: u.status };
+        state.order.push(u.id);
+        if(u.status !== 'complete') pollResults(u.id);
+      });
+      renderList();
+    }catch(err){}
+  }
+  loadExisting();
+})();
+</script>
+
+</body>
+</html>
